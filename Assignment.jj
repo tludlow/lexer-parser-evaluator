@@ -1,0 +1,29 @@
+PARSER_BEGIN(Assignment)
+
+public class Assignment{
+
+    public static void main(String args [])   {
+        //Reading in the PLM code to be parsed
+        Assignment parser = new Assignment(System.in);
+    }
+   
+}
+
+PARSER_END(Assignment)
+
+//Function
+TOKEN: { < EOL : ”\n” | ”\r” | ”\r\n” > }
+TOKEN: { < PLUS : ”+” > }
+
+
+void Input() :
+{}
+{
+    <LBRACE: "{"> |
+    <RBRACE: "}"> |
+    <FUNCDEF: "DEF"> |
+    <ARGUMENT: ( ["a"-"z"] )+> |
+    <FUNCNAME: "[A"-"Z"]" > |
+    <EOL: ";" ( "\r" | "\n" | "\r\n" ) >
+    
+}
