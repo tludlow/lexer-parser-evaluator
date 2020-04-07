@@ -24,3 +24,14 @@ hs_err_pid*
 /bin/
 /example.jj
 /example2.jj
+
+output.txt
+err.txt
+Token.*
+TokenMgrError.*
+SimpleCharStream.*
+AssignmentConstants.*
+AssignmentTokenManager.*
+Assignment.class
+Assignment.java
+ParseException.*
