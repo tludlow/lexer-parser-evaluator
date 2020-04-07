@@ -1,0 +1,4 @@
+Encountered " <FUNCNAME> "ADDFOUR "" at line 3, column 12.
+Was expecting:
+    "x+4" ...
+    
