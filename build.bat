@@ -1,1 +1,0 @@
-javacc Assignment.jj && javac *.java
