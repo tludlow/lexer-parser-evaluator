@@ -3,9 +3,7 @@ import java.util.*;
 
 public class Assignment {
 
-	//Storage of all the function names
-	static List<String> functionNames = new ArrayList<String>();
-
+	public static List<PLMFunction> functions = new ArrayList<PLMFunction>();
 
     public static void main(String args [])   {
         //Reading in the PLM code to be parsed
@@ -13,27 +11,133 @@ public class Assignment {
 
 		//Run the starting product rule, and catch any errors that are thrown in the product rules
 		try {
-			parser.Run();
+			parser.PLMProgram();
 		} catch (ParseException pe) {
 			System.out.println("FAIL");
 			// System.err.println(pe.currentToken.beginLine);
 			System.err.println(pe.getMessage());
 			System.exit(0);
 		}
-		
-		System.out.println("FUNCTION NAMES IN PROGRAM");
-		for (String s : functionNames) {
-			System.out.println(s);
-		}
-		
-    }
-   
+
+	}
 }
+
+/**
+ * PLM function bodies are a construction of items, all of which are nodes in the program AST
+ * which can be evaluated() to determine the value of the function. Three types of Item
+ * exist within a PLM program, these are: INTEGER_LITERAL, PARAMETER, FUNCTION_CALLS
+ * therefore an interface is implemented to allow for the productions of such nicely.
+ */
+interface Item {
+	//Evaluate the Item to product an integer - which in the PLM context are only ever positive integers
+	//Need to store the valid parameter everytime because context not provided by default
+	public int evaluate(String validParameter);
+}
+
+/**
+ * PLMFunction - A function within the PLM language
+ */
+class PLMFunction implements Item {
+	//The name of the function, this is either MAIN or a user defined UPPERCHAR string
+	public String name;
+	//When the function is user defined it has a parameter, a lowercase string - MAIN FUNCS NULL
+	public String parameter;
+	//The body of the function which is an expression, as defined in the grammar below.
+	public Item body;
+
+	public PLMFunction(String name, String parameter, Item body) {
+		this.name = name;
+		this.parameter = parameter;
+		this.body = body;
+	}
+
+	public int evaluate(String validParameter) {
+		//This is essentially calling evaluate on the root of a subtree of the AST
+		//This will cause the expression Items to be evaluated individually and built back up
+		return this.body.evaluate(validParameter);
+	}
+}
+
+class IntegerLiteral implements Item {
+	//The actual integer being represented by the object
+	public int val;
+
+	public IntegerLiteral(int val) {
+		this.val = val;
+	}
+
+	//Just return the value of the object, this is just a number nothing special needed.
+	//The argument validParameter only used for more complex scenarios
+	public int evaluate(String validParameter) {
+		return this.val;
+	}
+}
+
+
+class Parameter implements Item {
+	public String param;
+
+	public Parameter(String param) {
+		this.param = param;
+	}
+
+	public int evaluate(String validParameter) {
+		return validParameter;
+	}
+}
+
+class FunctionCall implements Item {
+	public PLMFunction function;
+	public Item argumentProvided;
+
+	public FunctionCall(PLMFunction function, Item argumentProvided) {
+		this.function = function;
+		this.argumentProvided = argumentProvided;
+	}
+}
+
+
+/**
+ * When the program is beign evaluated its important for us to be able to map the parameter in the expression
+ * to the actual number its representing based on the context its provided in.
+ */
+class ParameterMapping {
+	public String paramName;
+	public int value;
+
+	public ParameterMapping(String paramName, int value) {
+		this.paramName = paramName;
+		this.value = value;
+	}
+}
+
+
 
 PARSER_END(Assignment)
 
-//Tokens representing constitutent parts of the program
-TOKEN: { <LEFTBRACKET: "(" > }
+/**
+ *  The grammar for the assignment is essentially the following:
+ * 		plmprogram = ( function )+
+ * 		function = DEF (MAIN | UPPERCHARS lowerparam) { expression } ;
+ * 		expression = term(+ term)*
+ * 		term = item(multiplication item)*
+ * 		item = INTEGER_LITERAL | PARAMETER | UPPERCHARS(expression)
+ * 
+ * 
+ * 	The expression calculates the addition first because this means that the products
+ * 	which have higher precedence are calculated first in the AST
+ * 
+ * 	As JJTree is disallowed you cannot make rules which work as AST nodes and let it calculate
+ * 	for you, therefore I will need to replicate this behaviour myself with a stack etc...
+ * 	Information on how JJTree could be used here: https://www.cs.nmsu.edu/~rth/cs/cs471/InterpretersJavaCC.html
+ * 	My solution is based on replicating this myself
+ * 
+ * 	The program has no built-in context, therefore java util objects will need to be used
+ * 	to store data, allowing for checks to be made where context is needed.
+ */
+
+
+//Tokens representing constitutent parts of the prograTOKEN: { <LEFTBRACKET: "(" > }
 TOKEN: { <RIGHTBRACKET: ")" > }
 TOKEN: { <LEFTCURLYBRACKET: "{" > }
 TOKEN: { <RIGHTCURLYBRACKET: "}" > }
@@ -42,73 +146,109 @@ TOKEN: { <DEF: "DEF" > }
 TOKEN: { <MAIN: "MAIN" > }
 TOKEN: { <FUNCNAME: ( <UPPERCHAR> )+ > }
 TOKEN: { <PARAMETER: ( <LOWERCHAR> )+ > }
-TOKEN: { <FUNCBODY: "x+4" > }
-TOKEN: { <EOL: ";" ("\n" | "\r\n" | "\r") > }
-//No need to specify an end of file token, already implemented in JavaCC
+TOKEN: { <INTEGER: ( <DIGIT> )+ }
+TOKEN: { <SEMICOLON: ";" > }
+TOKEN: { <EOL: ("\n" | "\r\n" | "\r") > }
 
-//Operators (adddition and multiplication)
 TOKEN: { <ADDITION: "+" > }
 TOKEN: { <MULTIPLICATION: "*" > }
 
-//Allowable characters in variable names and numbers for arguments
 TOKEN: { <UPPERCHAR: ["A"-"Z"] > }
 TOKEN: { <LOWERCHAR: ["a"-"z"] > }
 TOKEN: { <DIGIT:     ["0"-"9"] > }
 
-
-void Run():  { Token token; } 
+/**
+ * The PLM language is a sequence of one or more PLM functions, where one must be the main function.
+ * This is defined as below with context checks done in the Assignment class to ensure
+ * no duplicates and MAIN is defined.
+ */
+void PLMProgram(): { PLMFunction plmFunc; }
 {
-   (
-		<DEF>
-		<SPACE>
-		//Either MAIN or UPPERCASESTR
-		(
-			token = <FUNCNAME>
-			StandardFunction()
-			|
-			token = <MAIN>
-			MainFunction()
-		)
-		<EOL>
+	( 
+		plmFunc = FunctionDef()
+		//Each time a function is read, we store it in the function list for context purposes
+		{ functions.add(plmFunc); }
 	)+
-   <EOF>
-
-   //Check if the MAIN function is defined, all valid PLM programs have a MAIN
-   {
-		if (!functionNames.contains("MAIN")) {
-			throw new ParseException("No MAIN function is defined (Rule 10)");
-		}
-   }
-   
+	<EOF>
 }
 
 /**
- * A function definition for any function which isnt the main function
- * These functions has one parameter
+ * PLM Functions are the constituent parts of a PLM program, these are either user defined
+ * or the main function, which has no parameter. These are defined as such
  */
-void StandardFunction() : { Token token; }
+PLMFunction FunctionDef(): { Token funcName; Token parameter = null; }
 {
-	<SPACE>
-	<PARAMETER>
-	<SPACE>
+	<DEF> <SPACE>
+	(
+		funcName = <MAIN>
+		|
+		funcName = <FUNCNAME> <SPACE> 
+		parameter = <PARAMETER>
+	)
+	<SPACE> 
 	<LEFTCURLYBRACKET>
 	<SPACE>
+	//FUNC BODY
 	<FUNCBODY>
 	<SPACE>
 	<RIGHTCURLYBRACKET>
 	<SPACE>
+	<SEMICOLON>
+	<EOL>
+
+	{ return new PLMFunction(funcName.image, parameter.image, ""); }
 }
 
 /**
- * A function definition for the main function - one without a parameter
+ * 3 types of terms exist within a PLM program, these are:
+ *  - INTEGER_LITERAL
+ *  - PARAMETER
+ *  - FUNCTION_CALL
+ * 
+ * 	This production matches the term with the type and generates the correct
+ * 	AST object so it can be evaluated later in the program
  */
-void MainFunction() : {}
+Term MatchItem(String validParameter): { Token token; TermType type; }
 {
-	<SPACE>
-	<LEFTCURLYBRACKET>
-	<SPACE>
-	<FUNCBODY>
-	<SPACE>
-	<RIGHTCURLYBRACKET>
-	<SPACE>
+	<INTEGER_LITERAL>
+	{ return new }
+
 }
+
+/**
+ * ITEM (<MULTIPLY> ITEM)*
+ */
+Term MatchProductExpression(): {}
+{
+	MatchItem()
+	MatchProduct()
+}
+
+Item MatchProduct(): {}
+{
+	( <MULTIPLICATION> MatchItem() )*
+}
+
+/**
+ * ITEM (<PLUS> <ProductExpression> )
+ */
+Item MatchSum(): {}
+{
+	( )
+}
+
+
+
+/**
+ * The structure of a function body is an expression, we 
+ */
+Term MatchExpression(): {}
+{
+	MatchProductExpression()
+	MatchSum()
+}
+
+
+
+
+
