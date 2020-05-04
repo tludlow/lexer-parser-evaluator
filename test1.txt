@@ -1,3 +1,2 @@
 DEF ADDFOUR x { x+4 } ;
 DEF ADDTHREE y { y+3 } ;
-DEF MAIN { ADDFOUR(1) } ;

@@ -25,14 +25,25 @@ public class Assignment {
 			System.exit(0);
 		}
 
+		//Check if the main function exists
+		boolean mainExists = false;
+		for (PLMFunction func : functions) {
+			if (func.name.equals("MAIN")) {
+				mainExists = true;
+				break;
+			}
+		}
+
+		if (!mainExists) {
+			System.out.println("FAIL");
+			System.err.println("0");
+			System.err.println("MAIN function not defined");
+			System.exit(0);
+		}
+
+
+		//Succesfull PLM program, now we can run main with no value provided, aka 0....
 		System.out.println("PASS");
-
-		// for (PLMFunction func : functions) {
-		// 	System.out.println(func.name + "(" + func.parameter + ") := " + func.body);
-		// }
-
-		// System.out.println("------");
-
 		for (PLMFunction func : functions) {
 			if (func.name == "MAIN") {
 				//Run the MAIN function without an parameter/argument definition, it doesnt have one...
@@ -66,10 +77,13 @@ class PLMFunction {
 	//The body of the function which is an expression, as defined in the grammar below.
 	public Item body;
 
-	public PLMFunction(String name, String parameter, Item body) {
+	public int lineNumber;
+
+	public PLMFunction(String name, String parameter, Item body, int lineNumber) {
 		this.name = name;
 		this.parameter = parameter;
 		this.body = body;
+		this.lineNumber = lineNumber;
 	}
 
 	public int evaluate(int argValue) {
@@ -292,7 +306,7 @@ PLMFunction FunctionDef(): { Token funcName; Token parameter; String parameterSt
 	<SEMICOLON>
 	<EOL>
 
-	{ return new PLMFunction(funcName.image, parameterString, additiveExpression); }
+	{ return new PLMFunction(funcName.image, parameterString, additiveExpression, Assignment.functions.size()+1); }
 }
 
 /**
