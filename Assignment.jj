@@ -3,11 +3,17 @@ import java.util.*;
 
 public class Assignment {
 
+	//Context for checking rules of the PLM program
 	public static List<PLMFunction> functions = new ArrayList<PLMFunction>();
+	//The stack of calls being made in the program, used to evaluate nested functions
+	public static Stack<FunctionCall> callStack = new Stack<FunctionCall>();
+	//A collection of all calls made in the program, used for context and evaluation...
+	public static Set<FunctionCall> functionCalls = new HashSet<FunctionCall>();
 
     public static void main(String args [])   {
         //Reading in the PLM code to be parsed
-        Assignment parser = new Assignment(System.in);
+		Assignment parser = new Assignment(System.in);
+		
 
 		//Run the starting product rule, and catch any errors that are thrown in the product rules
 		try {
@@ -17,6 +23,12 @@ public class Assignment {
 			// System.err.println(pe.currentToken.beginLine);
 			System.err.println(pe.getMessage());
 			System.exit(0);
+		}
+
+		for (PLMFunction func : functions) {
+			if (func.name == "MAIN") {
+				System.out.println(func.evaluate(""));
+			}
 		}
 
 	}
@@ -82,17 +94,74 @@ class Parameter implements Item {
 	}
 
 	public int evaluate(String validParameter) {
-		return validParameter;
+		return Integer.parseInt(validParameter);
 	}
 }
 
 class FunctionCall implements Item {
-	public PLMFunction function;
-	public Item argumentProvided;
+	public String functionName;
+	public Item argument;
 
-	public FunctionCall(PLMFunction function, Item argumentProvided) {
-		this.function = function;
-		this.argumentProvided = argumentProvided;
+	public FunctionCall(String functionName, Item argument) {
+		this.functionName = functionName;
+		this.argument = argument;
+	}
+
+	public int evaluate(String validParameter) {
+		//Divergence check is done here, we need to make sure no identifcal calls are made previously on the stack
+		int positionOfCall = Assignment.callStack.search(this);
+		if (positionOfCall != -1) {
+			//This call has been made before, this is a divergence...
+			System.out.println("DIVERGENCE");
+			System.exit(0);
+		}
+
+		//This is not a recursive loop, thank god...
+		Assignment.callStack.push(this);
+
+		//Evaluate all of the arguments within the function call argument
+		PLMFunction foundFunc = null;
+		for (PLMFunction func : Assignment.functions) {
+			if (func.name == functionName) {
+				foundFunc = func;
+			}
+		}
+		int functionEvaluation = foundFunc.evaluate(validParameter);
+		
+		//This function will be at the top of the stack once its evaluated, hopefully.
+		//Remove this so we can continue and get no recursion errors
+		Assignment.callStack.pop();
+
+		return functionEvaluation;
+	}
+}
+
+/**
+ * Multipurpose expression class which represents both multiplication and addition.
+ */
+enum ExpressionType {
+	MULTIPLICATION,
+	ADDITION
+}
+
+class Expression implements Item {
+	public Item x;
+	public Item y;
+	public ExpressionType type;
+
+	public Expression(Item x, Item y, ExpressionType type) {
+		this.x = x;
+		this.y = y;
+		this.type = type;
+	}
+
+	//Essentially performing an in-order traversal of the AST to evaluate expressions
+	public int evaluate(String validParameter) {
+		if (this.type == ExpressionType.MULTIPLICATION) {
+			return x.evaluate(validParameter) * y.evaluate(validParameter);
+		} else {
+			return x.evaluate(validParameter) + y.evaluate(validParameter);
+		}
 	}
 }
 
@@ -138,6 +207,7 @@ PARSER_END(Assignment)
 
 
 //Tokens representing constitutent parts of the prograTOKEN: { <LEFTBRACKET: "(" > }
+TOKEN: { <LEFTBRACKET: "(" > }
 TOKEN: { <RIGHTBRACKET: ")" > }
 TOKEN: { <LEFTCURLYBRACKET: "{" > }
 TOKEN: { <RIGHTCURLYBRACKET: "}" > }
@@ -146,7 +216,7 @@ TOKEN: { <DEF: "DEF" > }
 TOKEN: { <MAIN: "MAIN" > }
 TOKEN: { <FUNCNAME: ( <UPPERCHAR> )+ > }
 TOKEN: { <PARAMETER: ( <LOWERCHAR> )+ > }
-TOKEN: { <INTEGER: ( <DIGIT> )+ }
+TOKEN: { <INTEGER_LITERAL: ( <DIGIT> )+ > }
 TOKEN: { <SEMICOLON: ";" > }
 TOKEN: { <EOL: ("\n" | "\r\n" | "\r") > }
 
@@ -156,6 +226,7 @@ TOKEN: { <MULTIPLICATION: "*" > }
 TOKEN: { <UPPERCHAR: ["A"-"Z"] > }
 TOKEN: { <LOWERCHAR: ["a"-"z"] > }
 TOKEN: { <DIGIT:     ["0"-"9"] > }
+
 
 /**
  * The PLM language is a sequence of one or more PLM functions, where one must be the main function.
@@ -176,7 +247,7 @@ void PLMProgram(): { PLMFunction plmFunc; }
  * PLM Functions are the constituent parts of a PLM program, these are either user defined
  * or the main function, which has no parameter. These are defined as such
  */
-PLMFunction FunctionDef(): { Token funcName; Token parameter = null; }
+PLMFunction FunctionDef(): { Token funcName; Token parameter; String parameterString = ""; Item additiveExpression; }
 {
 	<DEF> <SPACE>
 	(
@@ -184,19 +255,23 @@ PLMFunction FunctionDef(): { Token funcName; Token parameter = null; }
 		|
 		funcName = <FUNCNAME> <SPACE> 
 		parameter = <PARAMETER>
+		{ parameterString = parameter.image; }
 	)
 	<SPACE> 
 	<LEFTCURLYBRACKET>
 	<SPACE>
-	//FUNC BODY
-	<FUNCBODY>
+
+	//The function body is an additive expression therefore we match for that here.
+	//This has its own "complex" production rules because it has many varieties.
+	additiveExpression = MatchAdditiveExpression(parameterString)
+	
 	<SPACE>
 	<RIGHTCURLYBRACKET>
 	<SPACE>
 	<SEMICOLON>
 	<EOL>
 
-	{ return new PLMFunction(funcName.image, parameter.image, ""); }
+	{ return new PLMFunction(funcName.image, parameterString, additiveExpression); }
 }
 
 /**
@@ -208,47 +283,81 @@ PLMFunction FunctionDef(): { Token funcName; Token parameter = null; }
  * 	This production matches the term with the type and generates the correct
  * 	AST object so it can be evaluated later in the program
  */
-Term MatchItem(String validParameter): { Token token; TermType type; }
-{
-	<INTEGER_LITERAL>
-	{ return new }
+Item MatchItem(String validParameter): { Token token; Item argumentExpression; }
+{	
+	//INTEGER LITERAL ITEM MATCHING
+	token = <INTEGER_LITERAL>
+	{ return new IntegerLiteral(Integer.parseInt(token.image)); }
+
+	|
+
+	//PARAMETER ITEM MATCHING
+	token = <PARAMETER>
+	{ return new Parameter(token.image); }
+
+	|
+
+	//FUNCTION CALL ITEM MATCHING
+	token = <FUNCNAME> <LEFTBRACKET> argumentExpression = MatchAdditiveExpression(validParameter) <RIGHTBRACKET>
+	{ 
+		//Make a new call to this function with the arguments it has been given in the matching.
+		FunctionCall fCall = new FunctionCall(token.image, argumentExpression);
+		Assignment.functionCalls.add(fCall);
+		return fCall;
+	}
 
 }
-
-/**
- * ITEM (<MULTIPLY> ITEM)*
- */
-Term MatchProductExpression(): {}
-{
-	MatchItem()
-	MatchProduct()
-}
-
-Item MatchProduct(): {}
-{
-	( <MULTIPLICATION> MatchItem() )*
-}
-
-/**
- * ITEM (<PLUS> <ProductExpression> )
- */
-Item MatchSum(): {}
-{
-	( )
-}
-
 
 
 /**
- * The structure of a function body is an expression, we 
+ * The structure of a function body is an expression, we match the LHS, either an
+ * multiplication expression or an item and then we pass that on to the sum matcher.
  */
-Term MatchExpression(): {}
+Item MatchAdditiveExpression(String validParameter): { Item bodyExpression;}
 {
-	MatchProductExpression()
-	MatchSum()
+	bodyExpression = MatchProductExpression(validParameter)
+	bodyExpression = MatchSum(validParameter, bodyExpression)
+	{
+		return bodyExpression;
+	}
 }
 
+/**
+ * The matching of an item operand and a multiplicative operator.
+ */
+Item MatchProductExpression(String validParameter): { Item multiplicativeExpression; }
+{
+	multiplicativeExpression = MatchItem(validParameter)
+	multiplicativeExpression = MatchProduct(validParameter, multiplicativeExpression)
+	{
+		return multiplicativeExpression;
+	}
+}
 
+/**
+ * Already have an ITEM/MultiplicativeExpression so want to match with a + and another Item
+ */
+Item MatchSum(String validParameter, Item lhsItem): { Item sum; }
+{
+	( <ADDITION> sum = MatchProductExpression(validParameter) 
+		{ lhsItem = new Expression(lhsItem, sum, ExpressionType.ADDITION); }
+	)*
 
+	{
+		return lhsItem;
+	}
+}
 
+/**
+ * Already have an ITEM/MultiplicativeExpression so want to match with a + and another Item
+ */
+Item MatchProduct(String validParameter, Item lhsItem): { Item multiply; }
+{
+	( <MULTIPLICATION> multiply = MatchItem(validParameter) 
+		{ lhsItem = new Expression(lhsItem, multiply, ExpressionType.MULTIPLICATION); }
+	)*
 
+	{
+		return lhsItem;
+	}
+}
