@@ -25,9 +25,18 @@ public class Assignment {
 			System.exit(0);
 		}
 
+		System.out.println("PASS");
+
+		// for (PLMFunction func : functions) {
+		// 	System.out.println(func.name + "(" + func.parameter + ") := " + func.body);
+		// }
+
+		// System.out.println("------");
+
 		for (PLMFunction func : functions) {
 			if (func.name == "MAIN") {
-				System.out.println(func.evaluate(""));
+				//Run the MAIN function without an parameter/argument definition, it doesnt have one...
+				System.out.println(func.evaluate(0));
 			}
 		}
 
@@ -41,15 +50,15 @@ public class Assignment {
  * therefore an interface is implemented to allow for the productions of such nicely.
  */
 interface Item {
-	//Evaluate the Item to product an integer - which in the PLM context are only ever positive integers
+	//Evaluate the Item to produce an integer - which in the PLM context are only ever positive integers
 	//Need to store the valid parameter everytime because context not provided by default
-	public int evaluate(String validParameter);
+	public int evaluate(int argValue);
 }
 
 /**
  * PLMFunction - A function within the PLM language
  */
-class PLMFunction implements Item {
+class PLMFunction {
 	//The name of the function, this is either MAIN or a user defined UPPERCHAR string
 	public String name;
 	//When the function is user defined it has a parameter, a lowercase string - MAIN FUNCS NULL
@@ -63,10 +72,14 @@ class PLMFunction implements Item {
 		this.body = body;
 	}
 
-	public int evaluate(String validParameter) {
+	public int evaluate(int argValue) {
 		//This is essentially calling evaluate on the root of a subtree of the AST
 		//This will cause the expression Items to be evaluated individually and built back up
-		return this.body.evaluate(validParameter);
+		return this.body.evaluate(argValue);
+	}
+
+	public String toString() {
+		return "[FUNCTION] name=" + name + " parameter=" + parameter + " body=" + body;
 	}
 }
 
@@ -80,8 +93,12 @@ class IntegerLiteral implements Item {
 
 	//Just return the value of the object, this is just a number nothing special needed.
 	//The argument validParameter only used for more complex scenarios
-	public int evaluate(String validParameter) {
+	public int evaluate(int argValue) {
 		return this.val;
+	}
+
+	public String toString() {
+		return Integer.toString(val);
 	}
 }
 
@@ -93,8 +110,12 @@ class Parameter implements Item {
 		this.param = param;
 	}
 
-	public int evaluate(String validParameter) {
-		return Integer.parseInt(validParameter);
+	public int evaluate(int argValue) {
+		return argValue;
+	}
+
+	public String toString() {
+		return param;
 	}
 }
 
@@ -103,11 +124,12 @@ class FunctionCall implements Item {
 	public Item argument;
 
 	public FunctionCall(String functionName, Item argument) {
+		//System.out.println("Call to function " + functionName + " made with argument " + argument);
 		this.functionName = functionName;
 		this.argument = argument;
 	}
 
-	public int evaluate(String validParameter) {
+	public int evaluate(int argValue) {
 		//Divergence check is done here, we need to make sure no identifcal calls are made previously on the stack
 		int positionOfCall = Assignment.callStack.search(this);
 		if (positionOfCall != -1) {
@@ -120,19 +142,28 @@ class FunctionCall implements Item {
 		Assignment.callStack.push(this);
 
 		//Evaluate all of the arguments within the function call argument
+		int evaluatedArg = argument.evaluate(argValue);
+
+		
+
 		PLMFunction foundFunc = null;
 		for (PLMFunction func : Assignment.functions) {
-			if (func.name == functionName) {
+			if (func.name.equals(this.functionName)) {
 				foundFunc = func;
+				break;
 			}
 		}
-		int functionEvaluation = foundFunc.evaluate(validParameter);
+		int functionEvaluation = foundFunc.evaluate(evaluatedArg);
 		
 		//This function will be at the top of the stack once its evaluated, hopefully.
 		//Remove this so we can continue and get no recursion errors
 		Assignment.callStack.pop();
 
 		return functionEvaluation;
+	}
+
+	public String toString() {
+		return "FUNCTION CALL: " + functionName;
 	}
 }
 
@@ -156,32 +187,22 @@ class Expression implements Item {
 	}
 
 	//Essentially performing an in-order traversal of the AST to evaluate expressions
-	public int evaluate(String validParameter) {
+	public int evaluate(int argValue) {
 		if (this.type == ExpressionType.MULTIPLICATION) {
-			return x.evaluate(validParameter) * y.evaluate(validParameter);
+			return x.evaluate(argValue) * y.evaluate(argValue);
 		} else {
-			return x.evaluate(validParameter) + y.evaluate(validParameter);
+			return x.evaluate(argValue) + y.evaluate(argValue);
+		}
+	}
+
+	public String toString() {
+		if (this.type == ExpressionType.MULTIPLICATION) {
+			return x + "*" + y;
+		} else {
+			return x + "+" + y;
 		}
 	}
 }
-
-
-/**
- * When the program is beign evaluated its important for us to be able to map the parameter in the expression
- * to the actual number its representing based on the context its provided in.
- */
-class ParameterMapping {
-	public String paramName;
-	public int value;
-
-	public ParameterMapping(String paramName, int value) {
-		this.paramName = paramName;
-		this.value = value;
-	}
-}
-
-
-
 PARSER_END(Assignment)
 
 /**
