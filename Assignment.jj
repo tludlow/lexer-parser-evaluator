@@ -57,7 +57,7 @@ public class Assignment {
 			for (int j =0; j<functions.size(); j++) {
 				if(i!=j && functions.get(i).name.equals(functions.get(j).name)) {
 					System.out.println("FAIL");
-					System.err.println(j);
+					System.err.println(j+1);
 					System.err.println("Duplicate function name defined for: " + functions.get(j).name);
 					System.exit(0);
 				}
@@ -387,6 +387,7 @@ IntegerLiteral MatchIntegerLiteralInExpression(): { Token token; }
 	{ return new IntegerLiteral(Integer.parseInt(token.image), token.beginLine); }
 }
 
+//Production for parameters that are operands in expressions
 Parameter MatchParameterInExpression(String validParameter): { Token token; }
 {	
 	token = <PARAMETER>
@@ -402,6 +403,7 @@ Parameter MatchParameterInExpression(String validParameter): { Token token; }
 	}
 }
 
+//Productions for function calls as operands in expressions. Simple error check for call to MAIN function here
 FunctionCall MatchFunctionCallInExpression(String validParameter): { Item argumentExpression; Token token; }
 {
 	//FUNCTION CALL ITEM MATCHING
