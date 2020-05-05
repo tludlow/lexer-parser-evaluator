@@ -47,8 +47,6 @@ public class Assignment {
 				}
 			}
 
-			System.out.println(expected);
-
 			//The DEF part is incorrect
 			if (expected.contains("DEF")) {
 				System.err.println("The line of a function must begin with 'DEF'");
