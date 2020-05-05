@@ -24,9 +24,86 @@ public class Assignment {
 			parser.PLMProgram();
 		} catch (ParseException pe) {
 			System.out.println("FAIL");
-			// System.err.println(pe.tokenImage).toString();
-			System.err.println(pe.currentToken.beginLine);
-			System.err.println(pe.getMessage());
+			System.out.println(pe.getMessage());
+
+			//Sometimes it prints the 0th line in weird edge cases, usually related to DEF
+			if (pe.currentToken.beginLine == 0) {
+				System.err.println("1");
+			} else {
+				System.err.println(pe.currentToken.beginLine);
+			}
+
+			int currentToken = pe.currentToken.kind;
+			int nextToken = pe.currentToken.next.kind;
+
+			System.out.println("CURRENT TOKEN: " + currentToken);
+			System.out.println("NEXT TOKEN: " + nextToken);
+
+			//Expected tokens
+			//Taken from the ParseException.java class and mofied for a list rather than a string buffer
+			List<String> expected = new ArrayList<String>();
+			int maxSize = 0;
+			for (int i = 0; i < pe.expectedTokenSequences.length; i++) {
+				if (maxSize < pe.expectedTokenSequences[i].length) {
+					maxSize = pe.expectedTokenSequences[i].length;
+				}
+				for (int j = 0; j < pe.expectedTokenSequences[i].length; j++) {
+					expected.add(pe.tokenImage[pe.expectedTokenSequences[i][j]].replaceAll("\"", ""));
+				}
+			}
+
+			System.out.println(expected);
+
+			//The DEF part is incorrect
+			if (expected.contains("DEF")) {
+				System.err.println("The line of a function must begin with 'DEF'");
+			} else if (expected.contains("MAIN") && expected.contains("<FUNCNAME>")) {
+				//Error where you dont have DEF <space> <FUNCNAME|MAIN>
+				System.err.println("Function name not specified correctly. You must have DEF <SPACE> then a string of uppercase characters");
+			} else if (expected.contains("{") && nextToken == 9) {
+				//The main function was provided with a parameter...
+				System.err.println("The MAIN function cannot have a parameter");
+			} else if (currentToken == 8 && nextToken != 5) {
+				//There was an invalid character within the function name
+				System.err.println("The function name specified is wrong");
+			} else if (currentToken == 9 && nextToken != 5) {
+				//Parameter had an invalid character in it...
+				System.err.println("The parameter specified was wrong");
+			} else if (currentToken == 3 && nextToken != 5) {
+				//Didnt pad the '{' with a space on the RHS
+				System.err.println("The '{' musat have a space on either side of it");
+			} else if (currentToken != 5 && nextToken == 4) {
+				//Didnt pad the '}' with a space on the RHS
+				System.err.println("The '}' must have a space on either side of it");
+			} else if (currentToken == 5 && nextToken == 12) {
+				//Didnt pad the '}' with a space on the RHS
+				System.err.println("Function definitions must end with a ';'");
+			} else if (expected.contains("<FUNCNAME>") && expected.contains("<PARAMETER>") && expected.contains("<INTEGER_LITERAL>")) {
+				System.err.println("You cannot have a space within a function body expression");
+			}
+
+			//Switch through all possible error cases, I have no idea how to make this nice...
+			//References to the token kinds so we can compare cases
+			// int EOF = 0;
+			// int LEFTBRACKET = 1;
+			// int RIGHTBRACKET = 2;
+			// int LEFTCURLYBRACKET = 3;
+			// int RIGHTCURLYBRACKET = 4;
+			// int SPACE = 5;
+			// int DEF = 6;
+			// int MAIN = 7;
+			// int FUNCNAME = 8;
+			// int PARAMETER = 9;
+			// int INTEGER_LITERAL = 10;
+			// int SEMICOLON = 11;
+			// int EOL = 12;
+			// int ADDITION = 13;
+			// int MULTIPLICATION = 14;
+			// int UPPERCHAR = 15;
+			// int LOWERCHAR = 16;
+			// int DIGIT = 17;
+
+
 			System.exit(0);
 		} catch (TokenMgrError te) {
 			System.out.println("FAIL");
@@ -323,10 +400,10 @@ TOKEN: { <INTEGER_LITERAL: ( <DIGIT> )+ > }
 TOKEN: { <SEMICOLON: ";" > }
 
 //Windows firendly end of line
-//TOKEN: { <EOL: ("\n" | "\r\n" | "\r") > }
+TOKEN: { <EOL: ("\n" | "\r\n" | "\r") > }
 
 //Submission friendly end of line
-TOKEN: { <EOL: "\n" > }
+//TOKEN: { <EOL: "\n" > }
 
 TOKEN: { <ADDITION: "+" > }
 TOKEN: { <MULTIPLICATION: "*" > }
