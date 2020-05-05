@@ -5,10 +5,14 @@ public class Assignment {
 
 	//Context for checking rules of the PLM program
 	public static List<PLMFunction> functions = new ArrayList<PLMFunction>();
+
 	//The stack of calls being made in the program, used to evaluate nested functions
+	//Use of a stack was done in DIS last year when we made our own simple calculator, this is
+	//used here too because it allows for nested calls and can check for divergence
 	public static Stack<FunctionCall> callStack = new Stack<FunctionCall>();
+
 	//A collection of all calls made in the program, used for context and evaluation...
-	public static Set<FunctionCall> functionCalls = new HashSet<FunctionCall>();
+	public static List<FunctionCall> functionCalls = new ArrayList<FunctionCall>();
 
     public static void main(String args [])   {
         //Reading in the PLM code to be parsed
@@ -20,9 +24,16 @@ public class Assignment {
 			parser.PLMProgram();
 		} catch (ParseException pe) {
 			System.out.println("FAIL");
-			// System.err.println(pe.currentToken.beginLine);
+			// System.err.println(pe.tokenImage).toString();
+			System.err.println(pe.currentToken.beginLine);
 			System.err.println(pe.getMessage());
 			System.exit(0);
+		}
+
+		//Ensure that the parameter provided in the function bodies matches that of the one in the definition
+		for (PLMFunction func : functions) {
+			String parameter = func.parameter;
+			System.out.println(func.name + "(" + func.parameter + ")" + " ==  " + func.body);
 		}
 
 		//Check if the main function exists
@@ -52,12 +63,26 @@ public class Assignment {
 		}
 
 	}
+
+
+	/**
+	 * Most of the error handling in JavaCC is terrible, however the ParseException and Token classes
+	 * provide the means to generate nice errors. We will use their methods, in the following function to
+	 * produce a nice error output of the form:
+	 * LINE NUMBER
+	 * What was expcted, what was received
+	 */
+
+	public String handleError(ParseException pe) {
+		return "wow";
+	}
 }
 
 /**
  * PLM function bodies are a construction of items, all of which are nodes in the program AST
  * which can be evaluated() to determine the value of the function. Three types of Item
  * exist within a PLM program, these are: INTEGER_LITERAL, PARAMETER, FUNCTION_CALLS
+ * therefore you can chain these together with operators (+ and *) to generate positive integers
  * therefore an interface is implemented to allow for the productions of such nicely.
  */
 interface Item {
@@ -97,6 +122,9 @@ class PLMFunction {
 	}
 }
 
+/**
+ * Integer literal items, when evaluated should return their value
+ */
 class IntegerLiteral implements Item {
 	//The actual integer being represented by the object
 	public int val;
@@ -117,6 +145,9 @@ class IntegerLiteral implements Item {
 }
 
 
+/**
+ * Parameter items, when evaluated should take the given argument as their result
+ */
 class Parameter implements Item {
 	public String param;
 
@@ -133,16 +164,24 @@ class Parameter implements Item {
 	}
 }
 
+/**
+ * Function call items, when evaluated should evaluate their argument then run the argument on their expression
+ */
 class FunctionCall implements Item {
 	public String functionName;
-	public Item argument;
+	public Item argumentExpression;
 
-	public FunctionCall(String functionName, Item argument) {
+	public FunctionCall(String functionName, Item argumentExpression) {
 		//System.out.println("Call to function " + functionName + " made with argument " + argument);
 		this.functionName = functionName;
-		this.argument = argument;
+		this.argumentExpression = argumentExpression;
 	}
 
+	/**
+	 * Evaluating the function call using the argument provided
+	 * We must first evaluate the argument and then evaluate the function with the
+	 * argument provided where the placeholder was
+	 */
 	public int evaluate(int argValue) {
 		//Divergence check is done here, we need to make sure no identifcal calls are made previously on the stack
 		int positionOfCall = Assignment.callStack.search(this);
@@ -153,13 +192,13 @@ class FunctionCall implements Item {
 		}
 
 		//This is not a recursive loop, thank god...
+		//Therefore we can push this function call to the stack
 		Assignment.callStack.push(this);
 
-		//Evaluate all of the arguments within the function call argument
-		int evaluatedArg = argument.evaluate(argValue);
+		//Evaluate the expression provided within the function call brackets
+		int evaluatedArg = argumentExpression.evaluate(argValue);
 
-		
-
+		//Find the function being called within the known functions
 		PLMFunction foundFunc = null;
 		for (PLMFunction func : Assignment.functions) {
 			if (func.name.equals(this.functionName)) {
@@ -167,6 +206,8 @@ class FunctionCall implements Item {
 				break;
 			}
 		}
+
+		//Evaluate the function using the evaluated call argument and the function found from our context
 		int functionEvaluation = foundFunc.evaluate(evaluatedArg);
 		
 		//This function will be at the top of the stack once its evaluated, hopefully.
@@ -189,31 +230,35 @@ enum ExpressionType {
 	ADDITION
 }
 
+/**
+ * An expression in the language, this is essentially an Item(+/-)Item
+ */
 class Expression implements Item {
-	public Item x;
-	public Item y;
+	public Item lhs;
+	public Item rhs;
 	public ExpressionType type;
 
-	public Expression(Item x, Item y, ExpressionType type) {
-		this.x = x;
-		this.y = y;
+	public Expression(Item lhs, Item rhs, ExpressionType type) {
+		this.lhs = lhs;
+		this.rhs = rhs;
 		this.type = type;
 	}
 
 	//Essentially performing an in-order traversal of the AST to evaluate expressions
+	//Evaluate the left node, add/multiply whatever the right node contains
 	public int evaluate(int argValue) {
 		if (this.type == ExpressionType.MULTIPLICATION) {
-			return x.evaluate(argValue) * y.evaluate(argValue);
+			return lhs.evaluate(argValue) * rhs.evaluate(argValue);
 		} else {
-			return x.evaluate(argValue) + y.evaluate(argValue);
+			return lhs.evaluate(argValue) + rhs.evaluate(argValue);
 		}
 	}
 
 	public String toString() {
 		if (this.type == ExpressionType.MULTIPLICATION) {
-			return x + "*" + y;
+			return lhs + "*" + rhs;
 		} else {
-			return x + "+" + y;
+			return lhs + "+" + rhs;
 		}
 	}
 }
@@ -228,8 +273,9 @@ PARSER_END(Assignment)
  * 		item = INTEGER_LITERAL | PARAMETER | UPPERCHARS(expression)
  * 
  * 
- * 	The expression calculates the addition first because this means that the products
- * 	which have higher precedence are calculated first in the AST
+ * 	The expression calculates the additive first because this means that the multiplicatives
+ * 	which have higher precedence are calculated first in the AST (think the sums being at the top
+ *  of the tree and the products being near the leaves, as required for in-order calculation )
  * 
  * 	As JJTree is disallowed you cannot make rules which work as AST nodes and let it calculate
  * 	for you, therefore I will need to replicate this behaviour myself with a stack etc...
@@ -250,6 +296,7 @@ TOKEN: { <SPACE: " " > }
 TOKEN: { <DEF: "DEF" > }
 TOKEN: { <MAIN: "MAIN" > }
 TOKEN: { <FUNCNAME: ( <UPPERCHAR> )+ > }
+//Used to detect parameters in function definitions and arguments in function calls
 TOKEN: { <PARAMETER: ( <LOWERCHAR> )+ > }
 TOKEN: { <INTEGER_LITERAL: ( <DIGIT> )+ > }
 TOKEN: { <SEMICOLON: ";" > }
@@ -372,27 +419,27 @@ Item MatchProductExpression(String validParameter): { Item multiplicativeExpress
 /**
  * Already have an ITEM/MultiplicativeExpression so want to match with a + and another Item
  */
-Item MatchSum(String validParameter, Item lhsItem): { Item sum; }
+Item MatchSum(String validParameter, Item expression): { Item sum; }
 {
 	( <ADDITION> sum = MatchProductExpression(validParameter) 
-		{ lhsItem = new Expression(lhsItem, sum, ExpressionType.ADDITION); }
+		{ expression = new Expression(expression, sum, ExpressionType.ADDITION); }
 	)*
 
 	{
-		return lhsItem;
+		return expression;
 	}
 }
 
 /**
  * Already have an ITEM/MultiplicativeExpression so want to match with a + and another Item
  */
-Item MatchProduct(String validParameter, Item lhsItem): { Item multiply; }
+Item MatchProduct(String validParameter, Item expression): { Item multiply; }
 {
 	( <MULTIPLICATION> multiply = MatchItem(validParameter) 
-		{ lhsItem = new Expression(lhsItem, multiply, ExpressionType.MULTIPLICATION); }
+		{ expression = new Expression(expression, multiply, ExpressionType.MULTIPLICATION); }
 	)*
 
 	{
-		return lhsItem;
+		return expression;
 	}
 }
