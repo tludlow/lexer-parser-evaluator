@@ -356,6 +356,32 @@ PLMFunction FunctionDef(): { Token funcName; Token parameter; String parameterSt
 	{ return new PLMFunction(funcName.image, parameterString, additiveExpression, Assignment.functions.size()+1); }
 }
 
+
+/** Production for the individual productions */
+IntegerLiteral MatchIntegerLiteralInExpression(): { Token token; }
+{
+	token = <INTEGER_LITERAL>
+	{ return new IntegerLiteral(Integer.parseInt(token.image)); }
+}
+
+Parameter MatchParameterInExpression(): { Token token; }
+{
+	token = <PARAMETER>
+	{ return new Parameter(token.image); }
+}
+
+FunctionCall MatchFunctionCallInExpression(String validParameter): { Item argumentExpression; Token token; }
+{
+	//FUNCTION CALL ITEM MATCHING
+	token = <FUNCNAME> <LEFTBRACKET> argumentExpression = MatchAdditiveExpression(validParameter) <RIGHTBRACKET>
+	{ 
+		//Make a new call to this function with the arguments it has been given in the matching.
+		FunctionCall fCall = new FunctionCall(token.image, argumentExpression);
+		Assignment.functionCalls.add(fCall);
+		return fCall;
+	}
+}
+
 /**
  * 3 types of terms exist within a PLM program, these are:
  *  - INTEGER_LITERAL
@@ -365,28 +391,23 @@ PLMFunction FunctionDef(): { Token funcName; Token parameter; String parameterSt
  * 	This production matches the term with the type and generates the correct
  * 	AST object so it can be evaluated later in the program
  */
-Item MatchItem(String validParameter): { Token token; Item argumentExpression; }
+Item MatchItem(String validParameter): { Token token; Item argumentExpression; Item toReturn; }
 {	
-	//INTEGER LITERAL ITEM MATCHING
-	token = <INTEGER_LITERAL>
-	{ return new IntegerLiteral(Integer.parseInt(token.image)); }
+	
+	(//Match an integer literal in an expression
+	toReturn = MatchIntegerLiteralInExpression()
 
 	|
 
-	//PARAMETER ITEM MATCHING
-	token = <PARAMETER>
-	{ return new Parameter(token.image); }
+	//Match a parameter in a expression
+	toReturn = MatchParameterInExpression()
 
 	|
 
-	//FUNCTION CALL ITEM MATCHING
-	token = <FUNCNAME> <LEFTBRACKET> argumentExpression = MatchAdditiveExpression(validParameter) <RIGHTBRACKET>
-	{ 
-		//Make a new call to this function with the arguments it has been given in the matching.
-		FunctionCall fCall = new FunctionCall(token.image, argumentExpression);
-		Assignment.functionCalls.add(fCall);
-		return fCall;
-	}
+	toReturn = MatchFunctionCallInExpression(validParameter)
+	)
+
+	{ return toReturn; }
 
 }
 
