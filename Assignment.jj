@@ -321,7 +321,12 @@ TOKEN: { <FUNCNAME: ( <UPPERCHAR> )+ > }
 TOKEN: { <PARAMETER: ( <LOWERCHAR> )+ > }
 TOKEN: { <INTEGER_LITERAL: ( <DIGIT> )+ > }
 TOKEN: { <SEMICOLON: ";" > }
-TOKEN: { <EOL: ("\n" | "\r\n" | "\r") > }
+
+//Windows firendly end of line
+//TOKEN: { <EOL: ("\n" | "\r\n" | "\r") > }
+
+//Submission friendly end of line
+TOKEN: { <EOL: "\n" > }
 
 TOKEN: { <ADDITION: "+" > }
 TOKEN: { <MULTIPLICATION: "*" > }
