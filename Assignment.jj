@@ -24,8 +24,6 @@ public class Assignment {
 			parser.PLMProgram();
 		} catch (ParseException pe) {
 			System.out.println("FAIL");
-			System.out.println(pe.getMessage());
-
 			//Sometimes it prints the 0th line in weird edge cases, usually related to DEF
 			if (pe.currentToken.beginLine == 0) {
 				System.err.println("1");
@@ -35,9 +33,6 @@ public class Assignment {
 
 			int currentToken = pe.currentToken.kind;
 			int nextToken = pe.currentToken.next.kind;
-
-			System.out.println("CURRENT TOKEN: " + currentToken);
-			System.out.println("NEXT TOKEN: " + nextToken);
 
 			//Expected tokens
 			//Taken from the ParseException.java class and mofied for a list rather than a string buffer
@@ -400,10 +395,10 @@ TOKEN: { <INTEGER_LITERAL: ( <DIGIT> )+ > }
 TOKEN: { <SEMICOLON: ";" > }
 
 //Windows firendly end of line
-TOKEN: { <EOL: ("\n" | "\r\n" | "\r") > }
+//TOKEN: { <EOL: ("\n" | "\r\n" | "\r") > }
 
 //Submission friendly end of line
-//TOKEN: { <EOL: "\n" > }
+TOKEN: { <EOL: "\n" > }
 
 TOKEN: { <ADDITION: "+" > }
 TOKEN: { <MULTIPLICATION: "*" > }
