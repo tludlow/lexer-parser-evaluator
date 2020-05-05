@@ -28,12 +28,40 @@ public class Assignment {
 			System.err.println(pe.currentToken.beginLine);
 			System.err.println(pe.getMessage());
 			System.exit(0);
+		} catch (TokenMgrError te) {
+			System.out.println("FAIL");
+			System.err.println(te.getMessage().split("line ")[1].charAt(0));
+			System.err.println("Found invalid PLM program character: '" + te.getMessage().split("Encountered: ")[1].charAt(1) + "'. This is not a valid ASCII character in a PLM program");
+			System.exit(0);
 		}
 
-		//Ensure that the parameter provided in the function bodies matches that of the one in the definition
-		for (PLMFunction func : functions) {
-			String parameter = func.parameter;
-			System.out.println(func.name + "(" + func.parameter + ")" + " ==  " + func.body);
+		//Ensure that all of the function calls in the program are to real functions that are defined.
+		for (FunctionCall call : functionCalls) {
+			boolean foundFuncBeingCalled = false;
+			for (PLMFunction func : functions) {
+				if (func.name.equals(call.functionName)) {
+					foundFuncBeingCalled = true;
+				}
+			}
+
+			if (!foundFuncBeingCalled) {
+				System.out.println("FAIL");
+				System.err.println(call.lineNum);
+				System.err.println("Function call to unknown function " + call.functionName);
+				System.exit(0);
+			}
+		}
+
+		//Ensure that no duplicate functions exist!
+		for (int i =0; i<functions.size(); i++) {
+			for (int j =0; j<functions.size(); j++) {
+				if(i!=j && functions.get(i).name.equals(functions.get(j).name)) {
+					System.out.println("FAIL");
+					System.err.println(j);
+					System.err.println("Duplicate function name defined for: " + functions.get(j).name);
+					System.exit(0);
+				}
+			}
 		}
 
 		//Check if the main function exists
@@ -62,19 +90,6 @@ public class Assignment {
 			}
 		}
 
-	}
-
-
-	/**
-	 * Most of the error handling in JavaCC is terrible, however the ParseException and Token classes
-	 * provide the means to generate nice errors. We will use their methods, in the following function to
-	 * produce a nice error output of the form:
-	 * LINE NUMBER
-	 * What was expcted, what was received
-	 */
-
-	public String handleError(ParseException pe) {
-		return "wow";
 	}
 }
 
@@ -128,9 +143,11 @@ class PLMFunction {
 class IntegerLiteral implements Item {
 	//The actual integer being represented by the object
 	public int val;
+	public int lineNum;
 
-	public IntegerLiteral(int val) {
+	public IntegerLiteral(int val, int lineNum) {
 		this.val = val;
+		this.lineNum = lineNum;
 	}
 
 	//Just return the value of the object, this is just a number nothing special needed.
@@ -150,9 +167,11 @@ class IntegerLiteral implements Item {
  */
 class Parameter implements Item {
 	public String param;
+	public int lineNum;
 
-	public Parameter(String param) {
+	public Parameter(String param, int lineNum) {
 		this.param = param;
+		this.lineNum = lineNum;
 	}
 
 	public int evaluate(int argValue) {
@@ -170,11 +189,13 @@ class Parameter implements Item {
 class FunctionCall implements Item {
 	public String functionName;
 	public Item argumentExpression;
+	public int lineNum;
 
-	public FunctionCall(String functionName, Item argumentExpression) {
+	public FunctionCall(String functionName, Item argumentExpression, int lineNum) {
 		//System.out.println("Call to function " + functionName + " made with argument " + argument);
 		this.functionName = functionName;
 		this.argumentExpression = argumentExpression;
+		this.lineNum = lineNum;
 	}
 
 	/**
@@ -218,7 +239,7 @@ class FunctionCall implements Item {
 	}
 
 	public String toString() {
-		return "FUNCTION CALL: " + functionName;
+		return functionName + "(" + argumentExpression + ")";
 	}
 }
 
@@ -332,6 +353,8 @@ void PLMProgram(): { PLMFunction plmFunc; }
 PLMFunction FunctionDef(): { Token funcName; Token parameter; String parameterString = ""; Item additiveExpression; }
 {
 	<DEF> <SPACE>
+	//This part of the function is either a user defined on, with (A-Z)+ name and a parameter
+	//or a MAIN function with no parameter.
 	(
 		funcName = <MAIN>
 		|
@@ -361,22 +384,39 @@ PLMFunction FunctionDef(): { Token funcName; Token parameter; String parameterSt
 IntegerLiteral MatchIntegerLiteralInExpression(): { Token token; }
 {
 	token = <INTEGER_LITERAL>
-	{ return new IntegerLiteral(Integer.parseInt(token.image)); }
+	{ return new IntegerLiteral(Integer.parseInt(token.image), token.beginLine); }
 }
 
-Parameter MatchParameterInExpression(): { Token token; }
-{
+Parameter MatchParameterInExpression(String validParameter): { Token token; }
+{	
 	token = <PARAMETER>
-	{ return new Parameter(token.image); }
+	{
+		//Check that the parameter we have matched is the same as the one valid in this function body
+		if (!validParameter.equals(token.image)) {
+			System.out.println("FAIL");
+			System.err.println(token.beginLine);
+			System.err.println("Expected parameter " + validParameter + " and have " + token.image);
+			System.exit(0);
+		}
+		return new Parameter(token.image, token.beginLine);
+	}
 }
 
 FunctionCall MatchFunctionCallInExpression(String validParameter): { Item argumentExpression; Token token; }
 {
 	//FUNCTION CALL ITEM MATCHING
 	token = <FUNCNAME> <LEFTBRACKET> argumentExpression = MatchAdditiveExpression(validParameter) <RIGHTBRACKET>
-	{ 
+	{ 	
+		//Ensure no call to the MAIN function is being made here
+		if (token.image.equals("MAIN")) {
+			System.out.println("FAIL");
+			System.err.println(token.beginLine);
+			System.err.println("Function call to MAIN being allowed when this is disallowed");
+			System.exit(0);
+		}
+
 		//Make a new call to this function with the arguments it has been given in the matching.
-		FunctionCall fCall = new FunctionCall(token.image, argumentExpression);
+		FunctionCall fCall = new FunctionCall(token.image, argumentExpression, token.beginLine);
 		Assignment.functionCalls.add(fCall);
 		return fCall;
 	}
@@ -400,7 +440,7 @@ Item MatchItem(String validParameter): { Token token; Item argumentExpression; I
 	|
 
 	//Match a parameter in a expression
-	toReturn = MatchParameterInExpression()
+	toReturn = MatchParameterInExpression(validParameter)
 
 	|
 
